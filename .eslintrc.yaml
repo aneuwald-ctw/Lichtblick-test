@@ -12,6 +12,7 @@ ignorePatterns:
   - storybook-static
   - coverage
 
+
 plugins:
   - file-progress
   - tss-unused-classes
