@@ -1,16 +1,23 @@
+# .github/workflows/auto-bump-version.yml
 name: Auto Bump Version
 
 on:
   push:
     branches:
-      - main # Trigger on push to main branch
+      - main
 
 permissions:
-  actions: write
+  contents: write # Para commitar e fazer push
+  # A permissão 'actions: write' não é mais necessária para disparar via workflow_dispatch e resuse para cascatear os jogs e passar valores 
 
 jobs:
-  bump:
+  bump_version:
     runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.read_version.outputs.new_version }}
+      commit_sha: ${{ steps.commit_version_bumps.outputs.commit_sha_val }}
+      changes_committed: ${{ steps.commit_version_bumps.outputs.changes_committed }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -20,9 +27,10 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "14"
+          node-version: "14" #MELHOR A GENTE METER A VERSAO LTS AQUI 
 
-      - run: corepack enable
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Cache yarn dependencies
         uses: actions/cache@v4
@@ -41,8 +49,8 @@ jobs:
 
       - name: Set up Git
         run: |
-          git config --global user.name 'github-actions'
-          git config --global user.email 'github-actions@github.com'
+          git config --global user.name 'github-actions[bot]' # Nome de bot recomendado
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com' # Email de bot recomendado
 
       - name: Bump version in root package.json
         run: yarn version patch
@@ -51,21 +59,38 @@ jobs:
         working-directory: packages/suite
         run: yarn version patch
 
+      - name: Read new root version
+        id: read_version
+        run: |
+          echo "new_version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
       - name: Commit version bumps
         id: commit_version_bumps
         run: |
-          git add package.json yarn.lock packages/suite/package.json
-          git commit -m "chore: bump versions in root and suite package.json [skip actions]"
-          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          # Adicionar todos os package.json e yarn.lock modificados na raiz e em workspaces
+          git add ./**/package.json ./**/yarn.lock ./package.json ./yarn.lock
+          # Verificar se há alterações para commitar
+          if git diff --staged --quiet; then
+            echo "No version changes to commit."
+            echo "commit_sha_val=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT # SHA atual se não houver commit
+            echo "changes_committed=false" >> $GITHUB_OUTPUT
+          else
+            git commit -m "chore: bump versions to ${{ steps.read_version.outputs.new_version }} [skip ci]"
+            echo "commit_sha_val=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT # SHA do novo commit
+            echo "changes_committed=true" >> $GITHUB_OUTPUT
+          fi
 
       - name: Push changes
+        if: steps.commit_version_bumps.outputs.changes_committed == 'true'
         run: |
           git push origin main
 
-      - name: Trigger pre-build workflow
-        run: |
-          curl -X POST -H "Accept: application/vnd.github+json" \
-               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-               -H "X-GitHub-Api-Version: 2022-11-28" \
-               -d '{"ref":"main"}' \
-               https://api.github.com/repos/${{ github.repository }}/actions/workflows/pre-build.yml/dispatches
+  call_reusable_pre_build:
+    needs: bump_version # Garante que este job roda após o bump_version
+    if: needs.bump_version.outputs.changes_committed == 'true' # Só roda se houve um commit
+    uses: ./.github/workflows/pre-build.yml # Caminho para o workflow reutilizável
+    with:
+      version: ${{ needs.bump_version.outputs.new_version }}
+      commit_sha: ${{ needs.bump_version.outputs.commit_sha }}
+    secrets:  
+      LICHTBLICK_GITHUB_TOKEN: ${{ secrets.LICHTBLICK_GITHUB_TOKEN }}
