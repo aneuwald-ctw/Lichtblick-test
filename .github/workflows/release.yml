@@ -34,18 +34,24 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Build prod files
-        run: |
-          yarn run desktop:build:prod
+      - name: Build web prod files
+        run: yarn web:build:prod
 
-      - name: Build windows version
-        run: yarn run package:win
+      - name: Zip web prod files to .tar.gz
+        run: tar -czf lichtblick-web-${{ env.new_version }}.tar.gz -C web/.webpack .
+        
+      #- name: Build prod files
+      #  run: |
+      #    yarn run desktop:build:prod
 
-      - name: Build linux version
-        run: yarn run package:linux
+      #- name: Build windows version
+      #  run: yarn run package:win
 
-      - name: Build macOS version
-        run: yarn run package:darwin
+      #- name: Build linux version
+      #  run: yarn run package:linux
+
+      #- name: Build macOS version
+      #  run: yarn run package:darwin
 
       # Important to use [skip actions] to avoid triggering other verisoning workflows
       # https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-workflow-runs/skipping-workflow-runs
@@ -66,13 +72,5 @@ jobs:
           commit: main
           generateReleaseNotes: true
           token: ${{ secrets.LICHTBLICK_GITHUB_TOKEN }}
-          artifacts: |
-            dist/lichtblick-${{ env.new_version }}-linux-amd64.deb
-            dist/lichtblick-${{ env.new_version }}-linux-x64.tar.gz
-            dist/lichtblick-${{ env.new_version }}-linux-arm64.deb
-            dist/lichtblick-${{ env.new_version }}-linux-arm64.tar.gz
-            dist/lichtblick-${{ env.new_version }}-mac-universal.dmg
-            dist/lichtblick-${{ env.new_version }}-win.exe
-            dist/latest-linux.yml
-            dist/latest-mac.yml
-            dist/latest.yml
+          artifacts: lichtblick-web-${{ env.new_version }}.tar.gz
+            
